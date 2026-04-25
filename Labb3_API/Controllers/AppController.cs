@@ -42,7 +42,7 @@ namespace Labb3_API.Controllers
 
         //Hämta alla intressen kopplade till en specifik person
         [HttpGet("persons/{personId}/interests", Name = "GetPersonsInterests")]
-        public async Task<ActionResult<Person>> GetInterestById(int personId)
+        public async Task<ActionResult> GetInterestById(int personId)
         {
             var person = await _ctx.Persons
                 .AsNoTracking()
@@ -66,7 +66,7 @@ namespace Labb3_API.Controllers
         }
 
         //Hämta alla länkar kopplade till en specifik person
-        [HttpGet("getPersonLinkById/{personId}", Name = "GetLinkById")]
+        [HttpGet("getPersonLinkById/persons/{personId}", Name = "GetLinkById")]
         public async Task<ActionResult<Person>> GetLinkById(int personId)
         {
             var person = await _ctx.Persons
@@ -90,11 +90,11 @@ namespace Labb3_API.Controllers
         }
 
         //Koppla en person till ett nytt intresse
-        [HttpPost("addInterest", Name = "AddInterest")]
-        public async Task<ActionResult<Link>> AddInterestToPerson(AddInterestToPersonRequst interestRequest)
+        [HttpPost("addInterest/persons/{personId}/interest/{interestId}", Name = "AddInterest")]
+        public async Task<ActionResult<Link>> AddInterestToPerson(int personId, int interestId)
         {
-            var personToUpdate = await _ctx.Persons.FirstOrDefaultAsync(u => u.Id == interestRequest.PersonId);
-            var interest = await _ctx.Interests.FirstOrDefaultAsync(i => i.Id == interestRequest.InterestId);
+            var personToUpdate = await _ctx.Persons.FirstOrDefaultAsync(u => u.Id == personId);
+            var interest = await _ctx.Interests.FirstOrDefaultAsync(i => i.Id == interestId);
 
 
             if (personToUpdate is null)
@@ -106,7 +106,7 @@ namespace Labb3_API.Controllers
                 return NotFound("Intresset hittades inte");
             }
 
-            var alreadyExists = await _ctx.Links.AnyAsync(l => l.PersonId == interestRequest.PersonId && l.InterestId == interestRequest.InterestId);
+            var alreadyExists = await _ctx.Links.AnyAsync(l => l.PersonId == personId && l.InterestId == interestId);
 
             if (alreadyExists)
             {
@@ -115,18 +115,18 @@ namespace Labb3_API.Controllers
 
             var interestToAdd = new Link
             {
-                InterestId = interestRequest.InterestId,
-                PersonId = interestRequest.PersonId
+                InterestId = interestId,
+                PersonId = personId
             };
 
             await _ctx.Links.AddAsync(interestToAdd);
             await _ctx.SaveChangesAsync();
 
-            return CreatedAtAction(nameof(GetInterestById), new { id = interestToAdd.Id }, interestToAdd);
+            return CreatedAtAction(nameof(GetInterestById), new { personId = personId }, interestToAdd);
         }
 
         //Lägga till nya länkar för en specifik person och ett specifikt intresse
-        [HttpPut("addLinkToPersonInterest/{personId}/{interestId}")]
+        [HttpPut("addLinkToPersonInterest/person/{personId}/interest/{interestId}")]
         public async Task<IActionResult> UpdateLinks(int personId, int interestId, UpdateLink updatedLink)
         {
             var person = await _ctx.Persons.FirstOrDefaultAsync(p => p.Id == personId);
