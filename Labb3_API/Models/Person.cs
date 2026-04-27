@@ -16,6 +16,6 @@ namespace Labb3_API.Models
 
         //public ICollection<Interest> Interests { get; set; } = null!;
         [JsonIgnore]
-        public ICollection<Link> Links { get; set; } = null!;
+        public ICollection<InterestPerson> InterestPersons { get; set; } = [];
     }
 }
