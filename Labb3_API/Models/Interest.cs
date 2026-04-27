@@ -13,11 +13,7 @@ namespace Labb3_API.Models
         [MaxLength(500)]
         public string Description { get; set; } = string.Empty;
 
-        //nav prop
         [JsonIgnore]
-        public ICollection<Link> Links { get; set; } = null!;
-
-        [JsonIgnore]
-        public ICollection<Person> Persons { get; set; } = null!;
+        public ICollection<InterestPerson> InterestPersons { get; set; } = [];
     }
 }

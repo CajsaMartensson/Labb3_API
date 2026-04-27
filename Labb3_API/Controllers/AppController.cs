@@ -18,7 +18,7 @@ namespace Labb3_API.Controllers
         }
 
         //Hämta alla personer i systemet
-        [HttpGet("persons", Name = "GetAllPersons")]
+        [HttpGet("getAllPersons", Name = "GetAllPersons")]
         public async Task<ActionResult<IEnumerable<GetPersonResponse>>> GetAllPersons()
         {
             return Ok(await _ctx.Persons
@@ -31,18 +31,9 @@ namespace Labb3_API.Controllers
                 .ToListAsync());
         }
 
-        //Extra, hämta alla intressen i systemet
-        [HttpGet("interests", Name = "GetAllInterests")]
-        public async Task<ActionResult<Interest>> GetAllInterests()
-        {
-            return Ok(await _ctx.Interests
-                .AsNoTracking()
-                .ToListAsync());
-        }
-
         //Hämta alla intressen kopplade till en specifik person
         [HttpGet("persons/{personId}/interests", Name = "GetPersonsInterests")]
-        public async Task<ActionResult> GetInterestById(int personId)
+        public async Task<ActionResult<IEnumerable<GetInterestResponse>>> GetInterestById(int personId)
         {
             var person = await _ctx.Persons
                 .AsNoTracking()
@@ -50,8 +41,9 @@ namespace Labb3_API.Controllers
                 .Select(i => new
                 {
                     i.Name,
-                    Interests = i.Links.Select(l => new
+                    Interests = i.InterestPersons.Select(l => new
                     {
+                        l.InterestId,
                         l.Interest.Title,
                         l.Interest.Description
                     })
@@ -67,105 +59,117 @@ namespace Labb3_API.Controllers
 
         //Hämta alla länkar kopplade till en specifik person
         [HttpGet("getPersonLinkById/persons/{personId}", Name = "GetLinkById")]
-        public async Task<ActionResult<Person>> GetLinkById(int personId)
+        public async Task<ActionResult<IEnumerable<GetLinkResponse>>> GetLinkById(int personId)
         {
-            var person = await _ctx.Persons
-                .AsNoTracking()
-                .Where(u => u.Id == personId)
-                .Select(i => new
-                {
-                    i.Name,
-                    Link = i.Links.Select(l => new
-                    {
-                        l.Url
-                    })
-                })
-                .FirstOrDefaultAsync();
+            var personExist = await _ctx.Persons.FirstOrDefaultAsync(p => p.Id == personId);
 
-            if (person is null)
+            if (personExist is null)
             {
                 return NotFound($"Personen med id: {personId} kunde inte hittas.");
             }
-            return Ok(person);
+
+            var links = await _ctx.Links
+                .AsNoTracking()
+                .Where(u => u.InterestPerson.PersonId == personId)
+                .Select(i => new
+                {
+                    i.Id,
+                    i.Url,
+                    Interest = i.InterestPerson.Interest.Title
+                })
+                .ToListAsync();
+
+            return Ok(links);
         }
 
         //Koppla en person till ett nytt intresse
-        [HttpPost("addInterest/persons/{personId}/interest/{interestId}", Name = "AddInterest")]
-        public async Task<ActionResult<Link>> AddInterestToPerson(int personId, int interestId)
+        [HttpPost("addInterest/{personId}", Name = "AddInterest")]
+        public async Task<ActionResult<IEnumerable<AddInterestToPersonRequst>>> AddInterestToPerson(int personId, AddInterestToPersonRequst request)
         {
             var personToUpdate = await _ctx.Persons.FirstOrDefaultAsync(u => u.Id == personId);
-            var interest = await _ctx.Interests.FirstOrDefaultAsync(i => i.Id == interestId);
-
 
             if (personToUpdate is null)
             {
                 return NotFound("Personen hittades inte");
             }
-            else if (interest is null)
+
+
+            var interest = await _ctx.Interests.FirstOrDefaultAsync(i => i.Id == request.InterestId);
+
+            if (interest is null)
             {
                 return NotFound("Intresset hittades inte");
             }
 
-            var alreadyExists = await _ctx.Links.AnyAsync(l => l.PersonId == personId && l.InterestId == interestId);
+            var alreadyExists = await _ctx.InterestPersons.AnyAsync(l => l.PersonId == personId && l.InterestId == request.InterestId);
 
             if (alreadyExists)
             {
-                return BadRequest("Personen har redan detta intressetn");
+                return BadRequest("Personen har redan detta intresset");
             }
 
-            var interestToAdd = new Link
+            var interestToAdd = new InterestPerson
             {
-                InterestId = interestId,
+                InterestId = request.InterestId,
                 PersonId = personId
             };
 
-            await _ctx.Links.AddAsync(interestToAdd);
+            await _ctx.InterestPersons.AddAsync(interestToAdd);
             await _ctx.SaveChangesAsync();
 
-            return CreatedAtAction(nameof(GetInterestById), new { personId = personId }, interestToAdd);
+            return Ok($"{personToUpdate.Name}(id: {personId}) har fått {interest.Title} (id: {request.InterestId}) som intresse!");
         }
 
-        //Lägga till nya länkar för en specifik person och ett specifikt intresse
-        [HttpPut("addLinkToPersonInterest/person/{personId}/interest/{interestId}")]
-        public async Task<IActionResult> UpdateLinks(int personId, int interestId, UpdateLink updatedLink)
+        //Lägg till ny länk
+        [HttpPost("addLinkToPersonInterest")]
+        public async Task<IActionResult> UpdateLinks(AddLinkRequest request)
         {
-            var person = await _ctx.Persons.FirstOrDefaultAsync(p => p.Id == personId);
+            var person = await _ctx.Persons.FirstOrDefaultAsync(p => p.Id == request.PersonId);
             if (person is null)
             {
-                return BadRequest($"Det finns ingen person med id: {personId}");
+                return BadRequest($"Det finns ingen person med id: {request.PersonId}");
             }
 
-            var interest = await _ctx.Interests.FirstOrDefaultAsync(i => i.Id == interestId);
+            var interest = await _ctx.Interests.FirstOrDefaultAsync(i => i.Id == request.InterestId);
             if (interest is null)
             {
-                return BadRequest($"Det finns inget intresse med id: {interestId}");
+                return BadRequest($"Det finns inget intresse med id: {request.InterestId}");
             }
 
-            var linkToUpdate = await _ctx.Links.FirstOrDefaultAsync(l => l.PersonId == personId && l.InterestId == interestId);
-
-            if (linkToUpdate is null)
-            {
-                return NotFound("Denna personen har inte det valda intresset. Den måste ha intresset för att lägga till en länk.");
-            }
-
-            if (!string.IsNullOrWhiteSpace(linkToUpdate.Url))
-            {
-                return BadRequest("Det finns redan en länk. Du kan bara lägga till där det saknas.");
-            }
-
-            if (string.IsNullOrWhiteSpace(updatedLink.Url))
+            if (string.IsNullOrWhiteSpace(request.Url))
             {
                 return BadRequest("Du måste ange en URL");
             }
 
+            var existingPersonInterest = await _ctx.InterestPersons.FirstOrDefaultAsync(ip => ip.PersonId == request.PersonId && ip.InterestId == request.InterestId);
+            if (existingPersonInterest is null)
+            {
+                existingPersonInterest = new InterestPerson
+                {
+                    PersonId = request.PersonId,
+                    InterestId = request.InterestId
+                };
 
+                await _ctx.InterestPersons.AddAsync(existingPersonInterest);
+                await _ctx.SaveChangesAsync();
+            }
 
-            linkToUpdate.Url = updatedLink.Url;
+            var newLink = await _ctx.Links.FirstOrDefaultAsync(l => l.InterestPersonId == existingPersonInterest.Id && l.Url == request.Url);
+            if (newLink is not null)
+            {
+                return BadRequest("Länken finns redan, vänligen välj en annan länk.");
+            }
 
-            _ctx.Update(linkToUpdate);
+            var addNewLink = new Link
+            {
+                InterestPersonId = existingPersonInterest.Id,
+                Url = request.Url
+            };
+
+            existingPersonInterest.Links.Add(addNewLink);
             await _ctx.SaveChangesAsync();
 
-            return Ok($"Länken {linkToUpdate.Url} har lagt till!");
+            return Ok($"Länken {addNewLink.Url} har lagt till!");
         }
     }
 }
